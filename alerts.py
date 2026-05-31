@@ -1,24 +1,16 @@
 import pandas as pd
 import ta
-from binance_module import obtener_cliente
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
+import requests
 
 maximo_historico = None
 
-def obtener_velas(symbol, intervalo="1h", limite=100):
-    client = obtener_cliente()
-    velas = client.get_klines(symbol=symbol, interval=intervalo, limit=limite)
-    df = pd.DataFrame(velas, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume',
-        'close_time', 'quote_volume', 'trades', 'taker_buy_base',
-        'taker_buy_quote', 'ignore'
-    ])
-    df['close'] = pd.to_numeric(df['close'])
-    df['high'] = pd.to_numeric(df['high'])
-    df['low'] = pd.to_numeric(df['low'])
+def obtener_velas_coingecko(coin_id, dias=2):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+    params = {'vs_currency': 'usd', 'days': dias, 'interval': 'hourly'}
+    r = requests.get(url, params=params)
+    data = r.json()
+    precios = [p[1] for p in data['prices']]
+    df = pd.DataFrame({'close': precios})
     return df
 
 def calcular_indicadores(df):
@@ -31,9 +23,11 @@ def verificar_alertas(total_actual=None):
     global maximo_historico
     alertas = []
 
-    for symbol, nombre in [('BTCUSDT', 'BTC'), ('ETHUSDT', 'ETH')]:
+    monedas = [('bitcoin', 'BTC'), ('ethereum', 'ETH')]
+
+    for coin_id, nombre in monedas:
         try:
-            df = obtener_velas(symbol)
+            df = obtener_velas_coingecko(coin_id)
             df = calcular_indicadores(df)
 
             precio = df['close'].iloc[-1]
