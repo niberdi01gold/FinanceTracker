@@ -8,7 +8,9 @@ api_key = os.getenv("BINANCE_API_KEY")
 api_secret = os.getenv("BINANCE_SECRET_KEY")
 
 def obtener_cliente():
-    return Client(api_key, api_secret)
+    client = Client(api_key, api_secret)
+    client.API_URL = 'https://api1.binance.com/api'
+    return client
 
 def obtener_balance():
     try:
