@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from dotenv import load_dotenv
 from telegram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,7 +13,11 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+print(f"TOKEN cargado: {TELEGRAM_TOKEN[:10] if TELEGRAM_TOKEN else 'NONE'}...")
+print(f"CHAT_ID cargado: {TELEGRAM_CHAT_ID}")
+
 bot = Bot(token=TELEGRAM_TOKEN)
+print("Bot creado exitosamente")
 
 async def enviar_mensaje(texto):
     await bot.send_message(
@@ -79,20 +84,28 @@ async def reporte_semanal():
     await enviar_mensaje(mensaje)
 
 async def verificar_y_alertar():
-    alertas = verificar_alertas()
+    data = obtener_balance()
+    if 'error' not in data:
+        alertas = verificar_alertas(data['total'])
+    else:
+        alertas = verificar_alertas()
     if alertas:
         for alerta in alertas:
             await enviar_mensaje(alerta)
 
 async def main():
+    print("Iniciando sistema...")
     init_db()
+    print("Base de datos iniciada")
     await enviar_mensaje("✅ *FinanceTracker iniciado correctamente*\nReportes diarios a las 8:00 AM")
+    print("Mensaje de inicio enviado")
 
     scheduler = AsyncIOScheduler(timezone="America/Santiago")
     scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0)
     scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0)
     scheduler.add_job(verificar_y_alertar, 'interval', minutes=5)
     scheduler.start()
+    print("Scheduler iniciado")
 
     while True:
         await asyncio.sleep(60)
