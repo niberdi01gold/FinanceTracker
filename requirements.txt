@@ -2,3 +2,6 @@ python-binance
 python-telegram-bot
 apscheduler
 python-dotenv
+pandas
+ta
+requests
