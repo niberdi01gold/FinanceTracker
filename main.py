@@ -1,8 +1,8 @@
 import asyncio
 import os
-import sys
 from dotenv import load_dotenv
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from binance_module import obtener_balance
 from database import init_db, guardar_snapshot, obtener_snapshot_ayer, obtener_snapshot_semana
@@ -16,10 +16,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 print(f"TOKEN cargado: {TELEGRAM_TOKEN[:10] if TELEGRAM_TOKEN else 'NONE'}...")
 print(f"CHAT_ID cargado: {TELEGRAM_CHAT_ID}")
 
-bot = Bot(token=TELEGRAM_TOKEN)
-print("Bot creado exitosamente")
-
 async def enviar_mensaje(texto):
+    bot = Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(
         chat_id=TELEGRAM_CHAT_ID,
         text=texto,
@@ -93,22 +91,30 @@ async def verificar_y_alertar():
         for alerta in alertas:
             await enviar_mensaje(alerta)
 
-async def main():
-    print("Iniciando sistema...")
-    init_db()
-    print("Base de datos iniciada")
-    await enviar_mensaje("✅ *FinanceTracker iniciado correctamente*\nReportes diarios a las 8:00 AM")
-    print("Mensaje de inicio enviado")
+# ── Comandos de Telegram ──
 
-    scheduler = AsyncIOScheduler(timezone="America/Santiago")
-    scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0)
-    scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0)
-    scheduler.add_job(verificar_y_alertar, 'interval', minutes=5)
-    scheduler.start()
-    print("Scheduler iniciado")
+async def cmd_cartera(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = obtener_balance()
+    if 'error' in data:
+        await update.message.reply_text(f"❌ Error: {data['error']}")
+        return
+    mensaje = (
+        f"💼 *Tu Cartera Ahora*\n\n"
+        f"₿ BTC: {data['btc_cantidad']:.6f} BTC\n"
+        f"   Precio: USD {data['btc_precio']:,.2f}\n"
+        f"   Valor: USD {data['btc_valor']:,.2f}\n\n"
+        f"Ξ ETH: {data['eth_cantidad']:.6f} ETH\n"
+        f"   Precio: USD {data['eth_precio']:,.2f}\n"
+        f"   Valor: USD {data['eth_valor']:,.2f}\n\n"
+        f"💰 Total: USD {data['total']:,.2f}"
+    )
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
 
-    while True:
-        await asyncio.sleep(60)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+async def cmd_btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = obtener_balance()
+    if 'error' in data:
+        await update.message.reply_text(f"❌ Error: {data['error']}")
+        return
+    mensaje = (
+        f"₿ *Bitcoin*\n\n"
+        f"Precio: USD {data['btc_
