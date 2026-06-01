@@ -18,24 +18,14 @@ print(f"CHAT_ID cargado: {TELEGRAM_CHAT_ID}")
 
 async def enviar_mensaje(texto):
     bot = Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(
-        chat_id=TELEGRAM_CHAT_ID,
-        text=texto,
-        parse_mode='Markdown'
-    )
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto, parse_mode='Markdown')
 
 async def reporte_diario():
     data = obtener_balance()
     if 'error' in data:
-        await enviar_mensaje(f"❌ Error al obtener balance: {data['error']}")
+        await enviar_mensaje(f"Error al obtener balance: {data['error']}")
         return
-
-    guardar_snapshot(
-        data['btc_cantidad'], data['btc_valor'],
-        data['eth_cantidad'], data['eth_valor'],
-        data['total']
-    )
-
+    guardar_snapshot(data['btc_cantidad'], data['btc_valor'], data['eth_cantidad'], data['eth_valor'], data['total'])
     ayer = obtener_snapshot_ayer()
     ganancia_texto = ""
     if ayer:
@@ -43,42 +33,19 @@ async def reporte_diario():
         porcentaje = (ganancia / ayer[6]) * 100
         emoji = "📈" if ganancia >= 0 else "📉"
         ganancia_texto = f"\n{emoji} Ganancia hoy: {'+' if ganancia >= 0 else ''}{ganancia:.2f} USD ({porcentaje:+.2f}%)"
-
-    mensaje = (
-        f"☀️ *Reporte Diario — Binance*\n\n"
-        f"₿ BTC: {data['btc_cantidad']:.6f} BTC\n"
-        f"   Precio: USD {data['btc_precio']:,.2f}\n"
-        f"   Valor: USD {data['btc_valor']:,.2f}\n\n"
-        f"Ξ ETH: {data['eth_cantidad']:.6f} ETH\n"
-        f"   Precio: USD {data['eth_precio']:,.2f}\n"
-        f"   Valor: USD {data['eth_valor']:,.2f}\n\n"
-        f"💰 Total: USD {data['total']:,.2f}"
-        f"{ganancia_texto}"
-    )
+    mensaje = f"☀️ *Reporte Diario*\n\n₿ BTC: {data['btc_cantidad']:.6f}\nPrecio: USD {data['btc_precio']:,.2f}\nValor: USD {data['btc_valor']:,.2f}\n\nΞ ETH: {data['eth_cantidad']:.6f}\nPrecio: USD {data['eth_precio']:,.2f}\nValor: USD {data['eth_valor']:,.2f}\n\n💰 Total: USD {data['total']:,.2f}{ganancia_texto}"
     await enviar_mensaje(mensaje)
 
 async def reporte_semanal():
     data = obtener_balance()
     semana = obtener_snapshot_semana()
-
     rentabilidad_texto = ""
     if semana:
         capital_inicial = semana[6]
         ganancia = data['total'] - capital_inicial
         porcentaje = (ganancia / capital_inicial) * 100
-        rentabilidad_texto = (
-            f"\n📊 Capital inicial: USD {capital_inicial:,.2f}\n"
-            f"📈 Rentabilidad: {porcentaje:+.2f}%\n"
-            f"💵 Ganancia: {'+' if ganancia >= 0 else ''}{ganancia:.2f} USD"
-        )
-
-    mensaje = (
-        f"📊 *Reporte Semanal — Binance*\n\n"
-        f"₿ BTC: {data['btc_cantidad']:.6f} BTC\n"
-        f"Ξ ETH: {data['eth_cantidad']:.6f} ETH\n\n"
-        f"💰 Total actual: USD {data['total']:,.2f}"
-        f"{rentabilidad_texto}"
-    )
+        rentabilidad_texto = f"\n📊 Capital inicial: USD {capital_inicial:,.2f}\n📈 Rentabilidad: {porcentaje:+.2f}%\n💵 Ganancia: {'+' if ganancia >= 0 else ''}{ganancia:.2f} USD"
+    mensaje = f"📊 *Reporte Semanal*\n\n₿ BTC: {data['btc_cantidad']:.6f}\nΞ ETH: {data['eth_cantidad']:.6f}\n\n💰 Total: USD {data['total']:,.2f}{rentabilidad_texto}"
     await enviar_mensaje(mensaje)
 
 async def verificar_y_alertar():
@@ -91,30 +58,55 @@ async def verificar_y_alertar():
         for alerta in alertas:
             await enviar_mensaje(alerta)
 
-# ── Comandos de Telegram ──
-
 async def cmd_cartera(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = obtener_balance()
     if 'error' in data:
-        await update.message.reply_text(f"❌ Error: {data['error']}")
+        await update.message.reply_text(f"Error: {data['error']}")
         return
-    mensaje = (
-        f"💼 *Tu Cartera Ahora*\n\n"
-        f"₿ BTC: {data['btc_cantidad']:.6f} BTC\n"
-        f"   Precio: USD {data['btc_precio']:,.2f}\n"
-        f"   Valor: USD {data['btc_valor']:,.2f}\n\n"
-        f"Ξ ETH: {data['eth_cantidad']:.6f} ETH\n"
-        f"   Precio: USD {data['eth_precio']:,.2f}\n"
-        f"   Valor: USD {data['eth_valor']:,.2f}\n\n"
-        f"💰 Total: USD {data['total']:,.2f}"
-    )
+    mensaje = f"💼 *Tu Cartera Ahora*\n\n₿ BTC: {data['btc_cantidad']:.6f}\nPrecio: USD {data['btc_precio']:,.2f}\nValor: USD {data['btc_valor']:,.2f}\n\nΞ ETH: {data['eth_cantidad']:.6f}\nPrecio: USD {data['eth_precio']:,.2f}\nValor: USD {data['eth_valor']:,.2f}\n\n💰 Total: USD {data['total']:,.2f}"
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 async def cmd_btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = obtener_balance()
     if 'error' in data:
-        await update.message.reply_text(f"❌ Error: {data['error']}")
+        await update.message.reply_text(f"Error: {data['error']}")
         return
-    mensaje = (
-        f"₿ *Bitcoin*\n\n"
-        f"Precio: USD {data['btc_
+    mensaje = f"₿ *Bitcoin*\n\nPrecio: USD {data['btc_precio']:,.2f}\nBalance: {data['btc_cantidad']:.6f} BTC\nValor: USD {data['btc_valor']:,.2f}"
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
+async def cmd_eth(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = obtener_balance()
+    if 'error' in data:
+        await update.message.reply_text(f"Error: {data['error']}")
+        return
+    mensaje = f"Ξ *Ethereum*\n\nPrecio: USD {data['eth_precio']:,.2f}\nBalance: {data['eth_cantidad']:.6f} ETH\nValor: USD {data['eth_valor']:,.2f}"
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
+async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mensaje = "🤖 *FinanceTracker — Comandos*\n\n/cartera — Ver tu cartera completa\n/btc — Ver precio y balance de BTC\n/eth — Ver precio y balance de ETH\n/ayuda — Ver esta lista"
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
+async def main():
+    print("Iniciando sistema...")
+    init_db()
+    print("Base de datos iniciada")
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("cartera", cmd_cartera))
+    app.add_handler(CommandHandler("btc", cmd_btc))
+    app.add_handler(CommandHandler("eth", cmd_eth))
+    app.add_handler(CommandHandler("ayuda", cmd_ayuda))
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    scheduler = AsyncIOScheduler(timezone="America/Santiago")
+    scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0)
+    scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0)
+    scheduler.add_job(verificar_y_alertar, 'interval', minutes=5)
+    scheduler.start()
+    await enviar_mensaje("✅ *FinanceTracker iniciado*\n\nComandos:\n/cartera\n/btc\n/eth\n/ayuda")
+    print("Bot iniciado con comandos")
+    while True:
+        await asyncio.sleep(60)
+
+if __name__ == "__main__":
+    asyncio.run(main())
