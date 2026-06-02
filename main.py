@@ -1,5 +1,7 @@
 import asyncio
 import os
+from datetime import datetime
+import pytz
 from dotenv import load_dotenv
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -19,6 +21,14 @@ TICKERS_IBKR = ['O', 'CEG', 'GEV', 'JNJ', 'ABBV', 'AVGO', 'AMD', 'MO', 'NVDA', '
 print(f"TOKEN cargado: {TELEGRAM_TOKEN[:10] if TELEGRAM_TOKEN else 'NONE'}...")
 print(f"CHAT_ID cargado: {TELEGRAM_CHAT_ID}")
 
+def mercado_abierto():
+    ny = pytz.timezone('America/New_York')
+    ahora = datetime.now(ny)
+    if ahora.weekday() >= 5:
+        return False
+    hora = ahora.hour + ahora.minute / 60
+    return 9.5 <= hora <= 16.0
+
 async def enviar_mensaje(texto):
     bot = Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto, parse_mode='Markdown')
@@ -36,7 +46,6 @@ async def reporte_diario():
         porcentaje = (ganancia / ayer[6]) * 100
         emoji = "📈" if ganancia >= 0 else "📉"
         ganancia_texto = f"\n{emoji} Ganancia hoy: {'+' if ganancia >= 0 else ''}{ganancia:.2f} USD ({porcentaje:+.2f}%)"
-    
     binance_msg = f"☀️ *Reporte Diario — Binance*\n\n₿ BTC: {data['btc_cantidad']:.6f}\nPrecio: USD {data['btc_precio']:,.2f}\nValor: USD {data['btc_valor']:,.2f}\n\nΞ ETH: {data['eth_cantidad']:.6f}\nPrecio: USD {data['eth_precio']:,.2f}\nValor: USD {data['eth_valor']:,.2f}\n\n💰 Total: USD {data['total']:,.2f}{ganancia_texto}"
     await enviar_mensaje(binance_msg)
 
@@ -67,15 +76,27 @@ async def reporte_semanal():
     mensaje = f"📊 *Reporte Semanal*\n\n₿ BTC: {data['btc_cantidad']:.6f}\nΞ ETH: {data['eth_cantidad']:.6f}\n\n💰 Total Binance: USD {data['total']:,.2f}{rentabilidad_texto}"
     await enviar_mensaje(mensaje)
 
-async def verificar_y_alertar():
-    data = obtener_balance()
-    if 'error' not in data:
-        alertas = verificar_alertas(data['total'])
-    else:
-        alertas = verificar_alertas()
-    if alertas:
+async def alertas_binance():
+    try:
+        data = obtener_balance()
+        total = data.get('total') if 'error' not in data else None
+        from alerts import verificar_alertas_binance
+        alertas = verificar_alertas_binance(total)
         for alerta in alertas:
             await enviar_mensaje(alerta)
+    except Exception as e:
+        print(f"Error alertas Binance: {e}")
+
+async def alertas_ibkr():
+    if not mercado_abierto():
+        return
+    try:
+        from alerts import verificar_alertas_ibkr
+        alertas = verificar_alertas_ibkr()
+        for alerta in alertas:
+            await enviar_mensaje(alerta)
+    except Exception as e:
+        print(f"Error alertas IBKR: {e}")
 
 async def cmd_cartera(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = obtener_balance()
@@ -151,7 +172,8 @@ async def main():
     scheduler = AsyncIOScheduler(timezone="America/Santiago")
     scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0)
     scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0)
-    scheduler.add_job(verificar_y_alertar, 'interval', minutes=5)
+    scheduler.add_job(alertas_binance, 'interval', hours=4)
+    scheduler.add_job(alertas_ibkr, 'interval', minutes=30)
     scheduler.start()
     await enviar_mensaje("✅ *FinanceTracker iniciado*\n\nComandos:\n/cartera — Binance\n/ibkr — IBKR\n/total — Patrimonio total\n/btc /eth /ayuda")
     print("Bot iniciado con comandos")

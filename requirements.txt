@@ -5,3 +5,5 @@ python-dotenv
 pandas
 ta
 requests
+yfinance
+pytz
