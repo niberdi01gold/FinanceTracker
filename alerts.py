@@ -4,6 +4,7 @@ import requests
 import yfinance as yf
 
 maximo_historico = None
+precios_anteriores = {}
 
 TICKERS_IBKR = ['O', 'CEG', 'GEV', 'JNJ', 'ABBV', 'AVGO', 'AMD', 'MO', 'NVDA', 'RKLB']
 
@@ -66,6 +67,35 @@ def analizar(nombre, df):
             f"Precio: USD {precio:,.2f}\n"
             f"📊 Posible inicio de tendencia bajista"
         )
+    return alertas
+
+def verificar_volatilidad_binance():
+    global precios_anteriores
+    alertas = []
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {'ids': 'bitcoin,ethereum', 'vs_currencies': 'usd', 'include_24hr_change': 'true'}
+        r = requests.get(url, params=params)
+        data = r.json()
+
+        for coin_id, nombre in [('bitcoin', 'BTC'), ('ethereum', 'ETH')]:
+            precio_actual = data[coin_id]['usd']
+            cambio_24h = data[coin_id]['usd_24h_change']
+
+            if coin_id in precios_anteriores:
+                precio_anterior = precios_anteriores[coin_id]
+                cambio = ((precio_actual - precio_anterior) / precio_anterior) * 100
+                if abs(cambio) >= 3:
+                    emoji = "🚀" if cambio > 0 else "💥"
+                    alertas.append(
+                        f"{emoji} *{nombre} — Movimiento brusco*\n"
+                        f"Cambio: {'+' if cambio > 0 else ''}{cambio:.1f}% en la última hora\n"
+                        f"Precio: USD {precio_actual:,.2f}\n"
+                        f"Cambio 24h: {cambio_24h:+.1f}%"
+                    )
+            precios_anteriores[coin_id] = precio_actual
+    except Exception as e:
+        print(f"Error volatilidad Binance: {e}")
     return alertas
 
 def verificar_alertas_binance(total_actual=None):

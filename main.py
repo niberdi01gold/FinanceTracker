@@ -8,8 +8,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from binance_module import obtener_balance
 from ibkr_module import obtener_posiciones, obtener_valor_total
-from database import init_db, guardar_snapshot, obtener_snapshot_ayer, obtener_snapshot_semana
-from alerts import verificar_alertas_binance, verificar_alertas_ibkr
+from database import init_db, guardar_snapshot, obtener_snapshot_ayer, obtener_snapshot_semana, obtener_rendimiento, obtener_dividendos, obtener_dividendos_total
+from alerts import verificar_alertas_binance, verificar_alertas_ibkr, verificar_volatilidad_binance
 
 load_dotenv()
 
@@ -95,6 +95,14 @@ async def alertas_ibkr():
     except Exception as e:
         print(f"Error alertas IBKR: {e}")
 
+async def alerta_volatilidad():
+    try:
+        alertas = verificar_volatilidad_binance()
+        for alerta in alertas:
+            await enviar_mensaje(alerta)
+    except Exception as e:
+        print(f"Error volatilidad: {e}")
+
 async def aviso_apertura_mercado():
     await enviar_mensaje("🔔 *Mercado abierto*\n\nActiva el Gateway de IBKR para ver tus acciones en tiempo real.")
 
@@ -126,6 +134,67 @@ async def cmd_mercado(update: Update, context: ContextTypes.DEFAULT_TYPE):
             estado = f"🔴 *Mercado CERRADO*\n\nHora NY: {hora_ny} ({dia_nombre})\nAbre mañana a las 9:30 AM"
     await update.message.reply_text(estado, parse_mode='Markdown')
 
+async def cmd_rendimiento(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = obtener_rendimiento()
+    if not data['primero'] or not data['ultimo']:
+        await update.message.reply_text("⚠️ Aún no hay suficientes datos históricos.")
+        return
+    total_actual = data['ultimo'][6]
+    total_inicial = data['primero'][6]
+    rentabilidad_total = ((total_actual - total_inicial) / total_inicial) * 100
+    ganancia_total = total_actual - total_inicial
+    semana_texto = ""
+    if data['semana']:
+        total_semana = data['semana'][1]
+        rent_semana = ((total_actual - total_semana) / total_semana) * 100
+        semana_texto = f"\n📅 Esta semana: {rent_semana:+.2f}%"
+    mes_texto = ""
+    if data['mes']:
+        total_mes = data['mes'][1]
+        rent_mes = ((total_actual - total_mes) / total_mes) * 100
+        mes_texto = f"\n📆 Este mes: {rent_mes:+.2f}%"
+    mensaje = (
+        f"📊 *Rendimiento Histórico*\n\n"
+        f"💰 Capital inicial: USD {total_inicial:,.2f}\n"
+        f"💰 Capital actual: USD {total_actual:,.2f}\n\n"
+        f"📈 Rentabilidad total: {rentabilidad_total:+.2f}%\n"
+        f"💵 Ganancia total: {'+' if ganancia_total >= 0 else ''}{ganancia_total:.2f} USD"
+        f"{semana_texto}"
+        f"{mes_texto}\n\n"
+        f"🏆 Máximo histórico: USD {data['maximo']:,.2f}\n"
+        f"📉 Mínimo histórico: USD {data['minimo']:,.2f}"
+    )
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
+async def cmd_dividendos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dividendos = obtener_dividendos()
+    total = obtener_dividendos_total()
+    if not dividendos:
+        await update.message.reply_text(
+            "💰 *Dividendos*\n\nAún no hay dividendos registrados.\n\nCuando recibas un dividendo escribe:\n`/agregar_dividendo TICKER MONTO`\n\nEjemplo:\n`/agregar_dividendo ABBV 2.50`",
+            parse_mode='Markdown'
+        )
+        return
+    mensaje = f"💰 *Dividendos Recibidos*\n\n"
+    for div in dividendos[-10:]:
+        mensaje += f"📅 {div[1]} — {div[2]}: USD {div[3]:.2f}\n"
+    mensaje += f"\n💵 Total acumulado: USD {total:.2f}"
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
+
+async def cmd_agregar_dividendo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from database import guardar_dividendo
+    try:
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text("Uso: /agregar_dividendo TICKER MONTO\nEjemplo: /agregar_dividendo ABBV 2.50")
+            return
+        ticker = args[0].upper()
+        monto = float(args[1])
+        guardar_dividendo(ticker, monto)
+        await update.message.reply_text(f"✅ Dividendo registrado\n{ticker}: USD {monto:.2f}", parse_mode='Markdown')
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)}")
+
 async def cmd_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = obtener_balance()
     posiciones = obtener_posiciones()
@@ -136,7 +205,6 @@ async def cmd_resumen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ibkr_total = sum(p['valor_mercado'] for p in posiciones)
         ibkr_ganancia = sum(p['ganancia_total'] for p in posiciones)
     patrimonio = binance_total + ibkr_total
-    ganancia_total = ibkr_ganancia
     emoji_ibkr = "📈" if ibkr_ganancia >= 0 else "📉"
     ibkr_status = f"USD {ibkr_total:,.2f} ({'+' if ibkr_ganancia >= 0 else ''}{ibkr_ganancia:.2f})" if isinstance(posiciones, list) else "⚠️ Offline"
     mensaje = (
@@ -205,7 +273,7 @@ async def cmd_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    mensaje = "🤖 *FinanceTracker — Comandos*\n\n/resumen — Resumen completo\n/cartera — Cartera Binance\n/ibkr — Cartera IBKR\n/total — Patrimonio total\n/mercado — Estado del mercado\n/btc — Precio BTC\n/eth — Precio ETH\n/ayuda — Ver esta lista"
+    mensaje = "🤖 *FinanceTracker — Comandos*\n\n/resumen — Todo en uno\n/cartera — Cartera Binance\n/ibkr — Cartera IBKR\n/total — Patrimonio total\n/mercado — Estado del mercado\n/rendimiento — Historial de rentabilidad\n/dividendos — Ver dividendos\n/agregar_dividendo — Registrar dividendo\n/btc — Precio BTC\n/eth — Precio ETH\n/ayuda — Ver esta lista"
     await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 async def main():
@@ -220,19 +288,23 @@ async def main():
     app.add_handler(CommandHandler("ibkr", cmd_ibkr))
     app.add_handler(CommandHandler("total", cmd_total))
     app.add_handler(CommandHandler("mercado", cmd_mercado))
+    app.add_handler(CommandHandler("rendimiento", cmd_rendimiento))
+    app.add_handler(CommandHandler("dividendos", cmd_dividendos))
+    app.add_handler(CommandHandler("agregar_dividendo", cmd_agregar_dividendo))
     app.add_handler(CommandHandler("ayuda", cmd_ayuda))
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    scheduler = AsyncIOScheduler(timezone="America/New_York")
-    scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0, timezone="America/Santiago")
-    scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0, timezone="America/Santiago")
+    scheduler = AsyncIOScheduler(timezone="America/Santiago")
+    scheduler.add_job(reporte_diario, 'cron', hour=8, minute=0)
+    scheduler.add_job(reporte_semanal, 'cron', day_of_week='mon', hour=8, minute=0)
     scheduler.add_job(alertas_binance, 'interval', hours=4)
     scheduler.add_job(alertas_ibkr, 'interval', minutes=30)
+    scheduler.add_job(alerta_volatilidad, 'interval', minutes=60)
     scheduler.add_job(aviso_apertura_mercado, 'cron', day_of_week='mon-fri', hour=9, minute=30, timezone="America/New_York")
     scheduler.add_job(aviso_cierre_mercado, 'cron', day_of_week='mon-fri', hour=16, minute=0, timezone="America/New_York")
     scheduler.start()
-    await enviar_mensaje("✅ *FinanceTracker iniciado*\n\nComandos:\n/resumen — Todo en uno\n/cartera — Binance\n/ibkr — IBKR\n/total — Patrimonio\n/mercado — Estado mercado\n/btc /eth /ayuda")
+    await enviar_mensaje("✅ *FinanceTracker iniciado*\n\nComandos:\n/resumen /cartera /ibkr /total\n/mercado /rendimiento /dividendos\n/btc /eth /ayuda")
     print("Bot iniciado con comandos")
     while True:
         await asyncio.sleep(60)
