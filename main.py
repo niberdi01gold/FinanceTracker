@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from binance_module import obtener_balance
 from ibkr_module import obtener_posiciones, obtener_valor_total
 from database import init_db, guardar_snapshot, obtener_snapshot_ayer, obtener_snapshot_semana
-from alerts import verificar_alertas
+from alerts import verificar_alertas_binance, verificar_alertas_ibkr
 
 load_dotenv()
 
@@ -80,7 +80,6 @@ async def alertas_binance():
     try:
         data = obtener_balance()
         total = data.get('total') if 'error' not in data else None
-        from alerts import verificar_alertas_binance
         alertas = verificar_alertas_binance(total)
         for alerta in alertas:
             await enviar_mensaje(alerta)
@@ -91,7 +90,6 @@ async def alertas_ibkr():
     if not mercado_abierto():
         return
     try:
-        from alerts import verificar_alertas_ibkr
         alertas = verificar_alertas_ibkr()
         for alerta in alertas:
             await enviar_mensaje(alerta)
@@ -125,7 +123,15 @@ async def cmd_eth(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_ibkr(update: Update, context: ContextTypes.DEFAULT_TYPE):
     posiciones = obtener_posiciones()
     if isinstance(posiciones, dict) and 'error' in posiciones:
-        await update.message.reply_text(f"Error IBKR: {posiciones['error']}")
+        await update.message.reply_text(
+            "⚠️ *IBKR Offline*\n\n"
+            "El Gateway de IBKR no está activo.\n\n"
+            "Para activarlo en tu PC:\n"
+            "1. Ejecuta el Gateway\n"
+            "2. Inicia sesión en localhost:5000\n"
+            "3. Ejecuta ngrok",
+            parse_mode='Markdown'
+        )
         return
     total_valor = 0
     total_ganancia = 0
