@@ -8,7 +8,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
 BASE_URL = f"{os.getenv('IBKR_URL', 'https://localhost:5000')}/v1/api"
-ACCOUNT_ID = "U25877354"
+ACCOUNT_ID = os.getenv("IBKR_ACCOUNT_ID")
 
 def obtener_posiciones():
     try:
